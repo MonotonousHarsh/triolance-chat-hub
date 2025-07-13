@@ -1,7 +1,7 @@
 
 // API utility functions for communicating with the backend
 
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = 'http://localhost:8080/real-time';
 
 // Generic API request function
 export const apiRequest = async (endpoint, options = {}) => {
