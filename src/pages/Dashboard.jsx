@@ -3,17 +3,16 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { MessageCircle, Plus, Users, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
+  const [username, setUsername] = useState('');
   const [roomId, setRoomId] = useState('');
   const [joinRoomId, setJoinRoomId] = useState('');
-  const [username, setUsername] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const [isJoining, setIsJoining] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -31,32 +30,40 @@ const Dashboard = () => {
 
   const handleCreateRoom = async (e) => {
     e.preventDefault();
-    if (!roomId.trim()) return;
+    if (!roomId.trim()) {
+      toast({
+        title: "Room ID Required",
+        description: "Please enter a room ID",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setIsCreating(true);
+    setIsLoading(true);
     try {
       const response = await fetch('http://localhost:8080/room/create-room', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         },
         body: JSON.stringify({
-          roomId: roomId.trim(),
+          roomId: roomId.trim()
         }),
       });
 
       if (response.ok) {
+        const result = await response.text();
         toast({
           title: "Room Created",
-          description: `Room "${roomId}" created successfully!`,
+          description: result,
         });
-        navigate(`/room/${roomId}`);
+        navigate(`/room/${roomId.trim()}`);
       } else {
         const errorText = await response.text();
         toast({
           title: "Failed to Create Room",
-          description: errorText || "Could not create room",
+          description: errorText,
           variant: "destructive",
         });
       }
@@ -68,38 +75,46 @@ const Dashboard = () => {
         variant: "destructive",
       });
     } finally {
-      setIsCreating(false);
+      setIsLoading(false);
     }
   };
 
   const handleJoinRoom = async (e) => {
     e.preventDefault();
-    if (!joinRoomId.trim()) return;
+    if (!joinRoomId.trim()) {
+      toast({
+        title: "Room ID Required",
+        description: "Please enter a room ID to join",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setIsJoining(true);
+    setIsLoading(true);
     try {
       const response = await fetch('http://localhost:8080/room/join-room', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         },
         body: JSON.stringify({
-          roomId: joinRoomId.trim(),
+          roomId: joinRoomId.trim()
         }),
       });
 
       if (response.ok) {
+        const result = await response.json();
         toast({
           title: "Joined Room",
-          description: `Successfully joined room "${joinRoomId}"!`,
+          description: result.message,
         });
-        navigate(`/room/${joinRoomId}`);
+        navigate(`/room/${joinRoomId.trim()}`);
       } else {
-        const errorText = await response.text();
+        const errorData = await response.json();
         toast({
           title: "Failed to Join Room",
-          description: errorText || "Could not join room",
+          description: errorData.error || "Room not found",
           variant: "destructive",
         });
       }
@@ -111,13 +126,17 @@ const Dashboard = () => {
         variant: "destructive",
       });
     } finally {
-      setIsJoining(false);
+      setIsLoading(false);
     }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('username');
     localStorage.removeItem('authToken');
+    toast({
+      title: "Logged Out",
+      description: "You have been logged out successfully",
+    });
     navigate('/');
   };
 
@@ -129,18 +148,20 @@ const Dashboard = () => {
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
               <MessageCircle className="h-8 w-8 text-blue-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900">ChatApp</span>
+              <span className="ml-2 text-xl font-bold text-gray-900">ChatApp Dashboard</span>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="flex items-center text-gray-700">
-                <User className="h-4 w-4 mr-1" />
-                <span className="font-medium">{username}</span>
+              <div className="flex items-center space-x-2">
+                <User className="h-5 w-5 text-gray-600" />
+                <span className="text-gray-900 font-medium">{username}</span>
               </div>
               <Link to="/profile">
-                <Button variant="outline" size="sm">Profile</Button>
+                <Button variant="outline" size="sm">
+                  Profile
+                </Button>
               </Link>
               <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-1" />
+                <LogOut className="h-4 w-4 mr-2" />
                 Logout
               </Button>
             </div>
@@ -149,26 +170,26 @@ const Dashboard = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Welcome to your Dashboard
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+            Welcome to ChatApp, {username}!
           </h1>
           <p className="text-lg text-gray-600">
-            Create a new chat room or join an existing one to start messaging
+            Create a new chat room or join an existing one to start chatting
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Create Room Card */}
-          <Card>
+          <Card className="h-fit">
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Plus className="h-5 w-5 mr-2 text-blue-600" />
+                <Plus className="h-5 w-5 mr-2 text-green-600" />
                 Create New Room
               </CardTitle>
               <CardDescription>
-                Start a new chat room and invite others to join
+                Create a new chat room with a unique room ID
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -182,32 +203,25 @@ const Dashboard = () => {
                     onChange={(e) => setRoomId(e.target.value)}
                     placeholder="Enter unique room ID"
                     required
-                    className="mt-1"
                   />
-                  <p className="text-sm text-gray-500 mt-1">
-                    Choose a unique identifier for your room
-                  </p>
                 </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isCreating || !roomId.trim()}
-                >
-                  {isCreating ? 'Creating...' : 'Create Room'}
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  {isLoading ? "Creating..." : "Create Room"}
                 </Button>
               </form>
             </CardContent>
           </Card>
 
           {/* Join Room Card */}
-          <Card>
+          <Card className="h-fit">
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Users className="h-5 w-5 mr-2 text-green-600" />
+                <Users className="h-5 w-5 mr-2 text-blue-600" />
                 Join Existing Room
               </CardTitle>
               <CardDescription>
-                Enter a room ID to join an existing chat room
+                Join a chat room using its room ID
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -221,43 +235,45 @@ const Dashboard = () => {
                     onChange={(e) => setJoinRoomId(e.target.value)}
                     placeholder="Enter room ID to join"
                     required
-                    className="mt-1"
                   />
-                  <p className="text-sm text-gray-500 mt-1">
-                    Ask the room creator for the room ID
-                  </p>
                 </div>
-                <Button
-                  type="submit"
-                  variant="outline"
-                  className="w-full"
-                  disabled={isJoining || !joinRoomId.trim()}
-                >
-                  {isJoining ? 'Joining...' : 'Join Room'}
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  <Users className="h-4 w-4 mr-2" />
+                  {isLoading ? "Joining..." : "Join Room"}
                 </Button>
               </form>
             </CardContent>
           </Card>
         </div>
 
-        {/* Quick Tips */}
-        <div className="mt-12 bg-blue-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-blue-900 mb-3">Quick Tips:</h3>
-          <ul className="space-y-2 text-blue-800">
-            <li className="flex items-start">
-              <span className="font-medium mr-2">•</span>
-              Room IDs are case-sensitive and must be unique
-            </li>
-            <li className="flex items-start">
-              <span className="font-medium mr-2">•</span>
-              Share your room ID with others to let them join
-            </li>
-            <li className="flex items-start">
-              <span className="font-medium mr-2">•</span>
-              You can be in multiple rooms at the same time
-            </li>
-          </ul>
-        </div>
+        {/* Instructions */}
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle>How to Use ChatApp</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="font-semibold text-lg mb-2">Creating a Room</h3>
+                <ul className="text-gray-600 space-y-1">
+                  <li>• Enter a unique room ID</li>
+                  <li>• Click "Create Room"</li>
+                  <li>• Share the room ID with friends</li>
+                  <li>• Start chatting instantly</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg mb-2">Joining a Room</h3>
+                <ul className="text-gray-600 space-y-1">
+                  <li>• Get the room ID from a friend</li>
+                  <li>• Enter the room ID</li>
+                  <li>• Click "Join Room"</li>
+                  <li>• Start participating in the chat</li>
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

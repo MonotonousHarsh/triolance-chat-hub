@@ -21,12 +21,11 @@ const Signup = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
   };
 
   const handleSignup = async (e) => {
@@ -93,9 +92,9 @@ const Signup = () => {
           </Link>
           <h2 className="mt-6 text-3xl font-bold text-gray-900">Create your account</h2>
           <p className="mt-2 text-sm text-gray-600">
-            Already have an account?{' '}
+            Or{' '}
             <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
-              Sign in here
+              sign in to your existing account
             </Link>
           </p>
         </div>
@@ -103,11 +102,11 @@ const Signup = () => {
         {/* Signup Form */}
         <Card>
           <CardHeader>
-            <CardTitle>Get Started</CardTitle>
-            <CardDescription>Create your account to start chatting</CardDescription>
+            <CardTitle>Sign Up</CardTitle>
+            <CardDescription>Enter your information to create an account</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSignup} className="space-y-6">
+            <form onSubmit={handleSignup} className="space-y-4">
               <div>
                 <Label htmlFor="username">Username</Label>
                 <Input
@@ -116,9 +115,8 @@ const Signup = () => {
                   type="text"
                   required
                   value={formData.username}
-                  onChange={handleInputChange}
-                  placeholder="Choose a username"
-                  className="mt-1"
+                  onChange={handleChange}
+                  placeholder="Enter your username"
                 />
               </div>
 
@@ -130,24 +128,22 @@ const Signup = () => {
                   type="email"
                   required
                   value={formData.email}
-                  onChange={handleInputChange}
+                  onChange={handleChange}
                   placeholder="Enter your email"
-                  className="mt-1"
                 />
               </div>
 
               <div>
                 <Label htmlFor="password">Password</Label>
-                <div className="relative mt-1">
+                <div className="relative">
                   <Input
                     id="password"
                     name="password"
-                    type={showPassword ? 'text' : 'password'}
+                    type={showPassword ? "text" : "password"}
                     required
                     value={formData.password}
-                    onChange={handleInputChange}
-                    placeholder="Create a password"
-                    className="pr-10"
+                    onChange={handleChange}
+                    placeholder="Enter your password"
                   />
                   <button
                     type="button"
@@ -165,16 +161,15 @@ const Signup = () => {
 
               <div>
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <div className="relative mt-1">
+                <div className="relative">
                   <Input
                     id="confirmPassword"
                     name="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
+                    type={showConfirmPassword ? "text" : "password"}
                     required
                     value={formData.confirmPassword}
-                    onChange={handleInputChange}
+                    onChange={handleChange}
                     placeholder="Confirm your password"
-                    className="pr-10"
                   />
                   <button
                     type="button"
@@ -190,23 +185,12 @@ const Signup = () => {
                 </div>
               </div>
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Creating Account...' : 'Create Account'}
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
           </CardContent>
         </Card>
-
-        {/* Footer */}
-        <div className="text-center">
-          <Link to="/" className="text-sm text-gray-600 hover:text-gray-900">
-            ← Back to home
-          </Link>
-        </div>
       </div>
     </div>
   );
