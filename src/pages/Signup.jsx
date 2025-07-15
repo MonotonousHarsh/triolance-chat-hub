@@ -48,12 +48,16 @@ const Signup = () => {
         headers: {
           'Content-Type': 'application/json',
         },
+   // console.log(response);
         body: JSON.stringify({
           username: formData.username,
           email: formData.email,
           password: formData.password,
         }),
       });
+
+  console.log("apna response status" + response.status);
+  console.log("Response" + response);
 
       if (response.ok) {
         toast({

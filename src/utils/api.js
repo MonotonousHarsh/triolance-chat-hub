@@ -1,7 +1,7 @@
 
 // API utility functions for communicating with the backend
 
-const API_BASE_URL = 'http://localhost:8080/real-time';
+const API_BASE_URL = 'http://localhost:8080';
 
 // Generic API request function
 export const apiRequest = async (endpoint, options = {}) => {
@@ -23,6 +23,7 @@ export const apiRequest = async (endpoint, options = {}) => {
 
   try {
     const response = await fetch(url, config);
+    console.log("response Ka Result: "+ response);
     return response;
   } catch (error) {
     console.error('API request failed:', error);
@@ -33,14 +34,14 @@ export const apiRequest = async (endpoint, options = {}) => {
 // User Authentication APIs
 export const authAPI = {
   signup: async (userData) => {
-    return apiRequest('/User/signup', {
+    return apiRequest('/real-time/User/signup', {
       method: 'POST',
       body: JSON.stringify(userData),
     });
   },
 
   login: async (credentials) => {
-    return apiRequest('/User/login', {
+    return apiRequest('/real-time/User/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
@@ -50,14 +51,14 @@ export const authAPI = {
 // Room Management APIs
 export const roomAPI = {
   createRoom: async (roomData) => {
-    return apiRequest('/room/create-room', {
+    return apiRequest('/real-time/room/create-room', {
       method: 'POST',
       body: JSON.stringify(roomData),
     });
   },
 
   joinRoom: async (roomData) => {
-    return apiRequest('/room/join-room', {
+    return apiRequest('/real-time/room/join-room', {
       method: 'POST',
       body: JSON.stringify(roomData),
     });
