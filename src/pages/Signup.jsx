@@ -29,7 +29,7 @@ const Signup = () => {
   };
 
   const handleSignup = async (e) => {
-    e.preventDefault();
+      e.preventDefault();
     
     if (formData.password !== formData.confirmPassword) {
       toast({
@@ -43,7 +43,7 @@ const Signup = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8080/User/signup', {
+      const response = await fetch('http://localhost:8080/real-time/User/signup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -57,7 +57,7 @@ const Signup = () => {
       });
 
   console.log("apna response status" + response.status);
-  console.log("Response" + response);
+  console.log("Response   " + response.data);
 
       if (response.ok) {
         toast({

@@ -41,7 +41,7 @@ const Dashboard = () => {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/room/create-room', {
+      const response = await fetch('http://localhost:8080/real-time/room/create-room', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -51,7 +51,7 @@ const Dashboard = () => {
           roomId: roomId.trim()
         }),
       });
-
+        console.log("this is create-room response  " , response.data);
       if (response.ok) {
         const result = await response.text();
         toast({
@@ -92,7 +92,7 @@ const Dashboard = () => {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/room/join-room', {
+      const response = await fetch('http://localhost:8080/real-time/room/join-room', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -102,7 +102,7 @@ const Dashboard = () => {
           roomId: joinRoomId.trim()
         }),
       });
-
+  console.log("this is Join-room response " ,response.data)
       if (response.ok) {
         const result = await response.json();
         toast({
