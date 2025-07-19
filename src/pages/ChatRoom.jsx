@@ -1,5 +1,4 @@
-
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Send, Users, ArrowLeft, MessageCircle, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import {
+  connectToRoom,
+  sendMessage as sendWebSocketMessage,
+  disconnectFromRoom,
+  isConnected as isWebSocketConnected
+} from '@/utils/websocket'; // Update path as needed
 
 const ChatRoom = () => {
   const { roomId } = useParams();
@@ -20,40 +25,64 @@ const ChatRoom = () => {
   const [participants, setParticipants] = useState(new Set());
   const messagesEndRef = useRef(null);
 
+  // Handle incoming WebSocket messages
+  const handleWebSocketMessage = useCallback((msg) => {
+    setMessages(prev => [...prev, {
+      id: msg.id || Date.now(),
+      sender: msg.sender,
+      content: msg.content,
+      timestamp: new Date(msg.timestamp),
+      type: msg.type || 'user'
+    }]);
+
+    // Add new participants to the list
+    if (msg.sender && msg.sender !== 'system' && !participants.has(msg.sender)) {
+      setParticipants(prev => new Set([...prev, msg.sender]));
+    }
+  }, [participants]);
+
   useEffect(() => {
     const storedUsername = localStorage.getItem('username');
     const authToken = localStorage.getItem('authToken');
-    
+
     if (!storedUsername || !authToken) {
       navigate('/login');
       return;
     }
-    
-    setUsername(storedUsername);
-    
-    // Simulate joining the room and loading message history
-    handleJoinRoom(storedUsername);
-    
-    // Simulate WebSocket connection (replace with actual WebSocket implementation)
-    setIsConnected(true);
-    
-    // Add current user to participants
-    setParticipants(prev => new Set([...prev, storedUsername]));
-    
-    // Simulate receiving a join message
-    setMessages(prev => [...prev, {
-      id: Date.now(),
-      sender: 'system',
-      content: `${storedUsername} joined the room`,
-      timestamp: new Date(),
-      type: 'system'
-    }]);
 
+    setUsername(storedUsername);
+    setParticipants(prev => new Set([...prev, storedUsername]));
+
+    // Connect to WebSocket
+    connectToRoom(roomId, storedUsername, handleWebSocketMessage)
+      .then(() => {
+        setIsConnected(true);
+
+        // Add join notification
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          sender: 'system',
+          content: `${storedUsername} joined the room`,
+          timestamp: new Date(),
+          type: 'system'
+        }]);
+      })
+      .catch(error => {
+        console.error('Connection error:', error);
+        toast({
+          title: "Connection Error",
+          description: error.message || "Failed to connect to chat room",
+          variant: "destructive",
+        });
+      });
+
+    // Cleanup on unmount
     return () => {
-      // Cleanup connection when component unmounts
-      setIsConnected(false);
+      if (isWebSocketConnected()) {
+        disconnectFromRoom();
+      }
     };
-  }, [navigate, roomId]);
+  }, [roomId, navigate, toast, handleWebSocketMessage]);
 
   useEffect(() => {
     scrollToBottom();
@@ -63,59 +92,32 @@ const ChatRoom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleJoinRoom = async (username) => {
-    try {
-      // In real implementation, this would establish WebSocket connection
-      console.log(`Joining room: ${roomId} as ${username}`);
-      
-      // Simulate loading message history
-      // In real app, this would come from the WebSocket message history
-      setMessages([
-        {
-          id: 1,
-          sender: 'system',
-          content: `Welcome to room ${roomId}`,
-          timestamp: new Date(),
-          type: 'system'
-        }
-      ]);
-      
-    } catch (error) {
-      console.error('Failed to join room:', error);
-      toast({
-        title: "Connection Error",
-        description: "Failed to join the chat room",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleSendMessage = (e) => {
     e.preventDefault();
-    
+
     if (!message.trim() || !isConnected) return;
 
-    // Simulate sending message (replace with actual WebSocket send)
-    const newMessage = {
-      id: Date.now(),
-      sender: username,
-      content: message.trim(),
-      timestamp: new Date(),
-      type: 'user'
-    };
+    // Send via WebSocket
+    sendWebSocketMessage(message.trim());
 
-    setMessages(prev => [...prev, newMessage]);
+    // Clear input
     setMessage('');
-
-    // In real implementation, send via WebSocket:
-    // sendMessage(roomId, message.trim());
-    
-    console.log(`Sending message to room ${roomId}:`, message.trim());
   };
 
   const handleLeaveRoom = () => {
-    // In real implementation, disconnect from WebSocket
+    // Add system message
+    setMessages(prev => [...prev, {
+      id: Date.now(),
+      sender: 'system',
+      content: `${username} left the room`,
+      timestamp: new Date(),
+      type: 'system'
+    }]);
+
+    // Disconnect WebSocket
+    disconnectFromRoom();
     setIsConnected(false);
+
     toast({
       title: "Left Room",
       description: `You have left room ${roomId}`,
@@ -124,17 +126,23 @@ const ChatRoom = () => {
   };
 
   const handleLogout = () => {
+    disconnectFromRoom();
     localStorage.removeItem('username');
     localStorage.removeItem('authToken');
     navigate('/');
   };
 
   const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
+
+  // The rest of your component remains the same...
+  // [Keep all your existing JSX code unchanged]
+
+
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -164,7 +172,7 @@ const ChatRoom = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-600">Welcome, {username}</span>
             <Button variant="outline" size="sm" onClick={handleLeaveRoom}>
@@ -187,10 +195,10 @@ const ChatRoom = () => {
                 <div
                   key={msg.id}
                   className={`flex ${
-                    msg.type === 'system' 
-                      ? 'justify-center' 
-                      : msg.sender === username 
-                        ? 'justify-end' 
+                    msg.type === 'system'
+                      ? 'justify-center'
+                      : msg.sender === username
+                        ? 'justify-end'
                         : 'justify-start'
                   }`}
                 >
@@ -237,8 +245,8 @@ const ChatRoom = () => {
                 disabled={!isConnected}
                 className="flex-1"
               />
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={!message.trim() || !isConnected}
                 size="sm"
               >
@@ -278,3 +286,5 @@ const ChatRoom = () => {
 };
 
 export default ChatRoom;
+
+

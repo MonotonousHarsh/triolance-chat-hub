@@ -1,96 +1,90 @@
-
-// WebSocket connection utility for real-time chat
-// This is a placeholder implementation - you'll need to implement actual STOMP/WebSocket connection
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
 
 let stompClient = null;
 let currentRoom = null;
 
 export const connectToRoom = (roomId, username, onMessageReceived) => {
-  // TODO: Implement actual STOMP connection
-  // Example with @stomp/stompjs:
-  /*
-  import { Client } from '@stomp/stompjs';
-  import SockJS from 'sockjs-client';
-  
-  const socket = new SockJS('http://localhost:8080/ws-chat');
-  stompClient = new Client({
-    webSocketFactory: () => socket,
-    connectHeaders: {
-      Authorization: `Bearer ${localStorage.getItem('authToken')}`
-    },
-    debug: (str) => {
-      console.log('STOMP Debug:', str);
-    },
-    onConnect: (frame) => {
-      console.log('Connected to WebSocket');
-      
-      // Subscribe to room messages
-      stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
-        const parsedMessage = JSON.parse(message.body);
-        onMessageReceived(parsedMessage);
-      });
-      
-      // Subscribe to private messages (like message history)
-      stompClient.subscribe(`/user/queue/room/${roomId}/history`, (message) => {
-        const history = JSON.parse(message.body);
-        // Handle message history
-      });
-      
-      // Send join notification
-      stompClient.publish({
-        destination: `/app/chat/${roomId}/join`,
-        body: JSON.stringify({ username })
-      });
-    },
-    onStompError: (frame) => {
-      console.error('STOMP Error:', frame);
+  return new Promise((resolve, reject) => {
+    // Disconnect existing connection if any
+    if (stompClient && stompClient.connected) {
+      stompClient.deactivate();
     }
+
+    // Create SockJS connection
+    const socket = new SockJS('http://localhost:8080/real-time/ws-chat');
+
+    // Create STOMP client
+    stompClient = new Client({
+      webSocketFactory: () => socket,
+      connectHeaders: {
+        Authorization: `Bearer ${localStorage.getItem('authToken')}`
+      },
+      debug: (str) => console.debug('STOMP:', str),
+      reconnectDelay: 5000,
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
+
+      onConnect: () => {
+        console.log('Connected to WebSocket for room:', roomId);
+
+        // Subscribe to room messages
+        stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
+          const parsedMessage = JSON.parse(message.body);
+          onMessageReceived(parsedMessage);
+        });
+
+        // Subscribe to private history messages
+        stompClient.subscribe(`/user/queue/history/${roomId}`, (message) => {
+          const history = JSON.parse(message.body);
+          history.forEach(msg => onMessageReceived(msg));
+        });
+
+        // Send join notification
+        stompClient.publish({
+          destination: `/app/chat/${roomId}/join`,
+          body: JSON.stringify({ username })
+        });
+
+        currentRoom = roomId;
+        resolve();
+      },
+
+      onStompError: (frame) => {
+        console.error('STOMP Error:', frame.headers.message);
+        reject(new Error(frame.headers.message));
+      },
+
+      onWebSocketClose: () => {
+        console.log('WebSocket connection closed');
+        currentRoom = null;
+      }
+    });
+
+    stompClient.activate();
   });
-  
-  stompClient.activate();
-  currentRoom = roomId;
-  */
-  
-  console.log(`Connecting to room: ${roomId} as ${username}`);
-  currentRoom = roomId;
-  
-  // Mock connection for now
-  return Promise.resolve();
 };
 
-export const sendMessage = (roomId, content) => {
-  // TODO: Implement actual message sending
-  /*
-  if (stompClient && stompClient.connected) {
+export const sendMessage = (content) => {
+  if (stompClient && stompClient.connected && currentRoom) {
     stompClient.publish({
-      destination: `/app/chat/${roomId}/send`,
-      body: JSON.stringify({
-        content: content,
-        roomId: roomId
-      })
+      destination: `/app/chat/${currentRoom}/send`,
+      body: JSON.stringify({ content })
     });
+  } else {
+    console.error('Cannot send message: not connected to a room');
   }
-  */
-  
-  console.log(`Sending message to room ${roomId}:`, content);
 };
 
 export const disconnectFromRoom = () => {
-  // TODO: Implement actual disconnection
-  /*
-  if (stompClient && stompClient.connected) {
+  if (stompClient) {
     stompClient.deactivate();
     stompClient = null;
     currentRoom = null;
+    console.log('Disconnected from WebSocket');
   }
-  */
-  
-  console.log('Disconnecting from room:', currentRoom);
-  currentRoom = null;
 };
 
 export const isConnected = () => {
-  // TODO: Return actual connection status
-  // return stompClient && stompClient.connected;
-  return currentRoom !== null;
+  return stompClient && stompClient.connected;
 };

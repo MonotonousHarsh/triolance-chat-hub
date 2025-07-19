@@ -9,14 +9,25 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 5174,
   },
+
   plugins: [
     react(),
-    mode === 'development' &&
-    componentTagger(),
+    mode === "development" && componentTagger(),
   ].filter(Boolean),
+
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+
+  // → shim `global` to point at `window` in both dev & build
+  define: {
+    global: "window",
+  },
+
+  // → ensure sockjs-client gets pre‑bundled so Vite can apply the shim
+  optimizeDeps: {
+    include: ["sockjs-client"],
   },
 }));

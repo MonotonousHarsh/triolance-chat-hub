@@ -26,18 +26,24 @@ const Login = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          username,
-          password,
-        }),
+        body: JSON.stringify({ username, password }),
       });
 
+console.log(response);
+ const data = await response.json();
       if (response.ok) {
+
+          console.log("check below token exist");
+        //  const data = await response.json();
+           console.log("check" , data);
         // Store username for later use
         localStorage.setItem('username', username);
         // In a real app, you'd store the JWT token here
-        localStorage.setItem('authToken', 'dummy-token');
-        
+
+        localStorage.setItem('authToken',data.token);
+
+        console.log("authToken", data.token);
+
         toast({
           title: "Login Successful",
           description: "Welcome back!",

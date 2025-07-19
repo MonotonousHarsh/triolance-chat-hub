@@ -1,12 +1,11 @@
-
-// API utility functions for communicating with the backend
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
 
 const API_BASE_URL = 'http://localhost:8080';
 
-// Generic API request function
 export const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -15,7 +14,6 @@ export const apiRequest = async (endpoint, options = {}) => {
     ...options,
   };
 
-  // Add authentication token if available
   const token = localStorage.getItem('authToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -23,7 +21,6 @@ export const apiRequest = async (endpoint, options = {}) => {
 
   try {
     const response = await fetch(url, config);
-    console.log("response Ka Result: "+ response);
     return response;
   } catch (error) {
     console.error('API request failed:', error);
@@ -31,7 +28,6 @@ export const apiRequest = async (endpoint, options = {}) => {
   }
 };
 
-// User Authentication APIs
 export const authAPI = {
   signup: async (userData) => {
     return apiRequest('/real-time/User/signup', {
@@ -48,24 +44,22 @@ export const authAPI = {
   },
 };
 
-// Room Management APIs
 export const roomAPI = {
   createRoom: async (roomData) => {
-    return apiRequest('/real-time/room/create-room', {
+    return apiRequest('/room/create-room', {
       method: 'POST',
       body: JSON.stringify(roomData),
     });
   },
 
   joinRoom: async (roomData) => {
-    return apiRequest('/real-time/room/join-room', {
+    return apiRequest('/room/join-room', {
       method: 'POST',
       body: JSON.stringify(roomData),
     });
   },
 };
 
-// Authentication helpers
 export const auth = {
   isAuthenticated: () => {
     const token = localStorage.getItem('authToken');
@@ -73,13 +67,8 @@ export const auth = {
     return !!(token && username);
   },
 
-  getUsername: () => {
-    return localStorage.getItem('username');
-  },
-
-  getToken: () => {
-    return localStorage.getItem('authToken');
-  },
+  getUsername: () => localStorage.getItem('username'),
+  getToken: () => localStorage.getItem('authToken'),
 
   logout: () => {
     localStorage.removeItem('authToken');
@@ -92,7 +81,6 @@ export const auth = {
   },
 };
 
-// Error handling utility
 export const handleAPIError = async (response) => {
   if (!response.ok) {
     let errorMessage;
@@ -106,3 +94,83 @@ export const handleAPIError = async (response) => {
   }
   return response;
 };
+
+let stompClient = null;
+let currentRoom = null;
+
+export const connectToRoom = (roomId, username, onMessageReceived) => {
+  return new Promise((resolve, reject) => {
+    if (stompClient && stompClient.connected) {
+      stompClient.deactivate();
+    }
+
+    const socket = new SockJS('http://localhost:8080/ws-chat');
+    stompClient = new Client({
+      webSocketFactory: () => socket,
+      connectHeaders: {
+        Authorization: `Bearer ${localStorage.getItem('authToken')}`
+      },
+      debug: (str) => console.debug('STOMP:', str),
+      reconnectDelay: 5000,
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
+
+      onConnect: () => {
+        console.log('Connected to WebSocket for room:', roomId);
+
+        // Subscribe to room messages
+        stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
+          const parsedMessage = JSON.parse(message.body);
+          onMessageReceived(parsedMessage);
+        });
+
+        // Subscribe to private history messages
+        stompClient.subscribe(`/user/queue/history/${roomId}`, (message) => {
+          const history = JSON.parse(message.body);
+          history.forEach(msg => onMessageReceived(msg));
+        });
+
+        // Send join notification
+        stompClient.publish({
+          destination: `/app/chat/${roomId}/join`,
+          body: JSON.stringify({})
+        });
+
+        currentRoom = roomId;
+        resolve();
+      },
+
+      onStompError: (frame) => {
+        console.error('STOMP Error:', frame.headers.message);
+        reject(new Error(frame.headers.message));
+      },
+
+      onWebSocketClose: () => {
+        console.log('WebSocket connection closed');
+        currentRoom = null;
+      }
+    });
+
+    stompClient.activate();
+  });
+};
+
+export const sendMessage = (content) => {
+  if (stompClient && stompClient.connected && currentRoom) {
+    stompClient.publish({
+      destination: `/app/chat/${currentRoom}/send`,
+      body: JSON.stringify({ content })
+    });
+  }
+};
+
+export const disconnectFromRoom = () => {
+  if (stompClient) {
+    stompClient.deactivate();
+    stompClient = null;
+    currentRoom = null;
+    console.log('Disconnected from WebSocket');
+  }
+};
+
+export const isConnected = () => stompClient && stompClient.connected;
