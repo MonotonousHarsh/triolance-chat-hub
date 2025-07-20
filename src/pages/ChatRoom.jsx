@@ -12,9 +12,10 @@ import {
   sendMessage as sendWebSocketMessage,
   disconnectFromRoom,
   isConnected as isWebSocketConnected
-} from '@/utils/websocket'; // Update path as needed
+} from '@/utils/websocket';
 
 const ChatRoom = () => {
+  const mountedRef = useRef(true);
   const { roomId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -24,9 +25,12 @@ const ChatRoom = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [participants, setParticipants] = useState(new Set());
   const messagesEndRef = useRef(null);
+  const connectionRef = useRef(null); // Track connection status
 
-  // Handle incoming WebSocket messages
+  // FIXED: Removed participants from dependencies
   const handleWebSocketMessage = useCallback((msg) => {
+    if (!mountedRef.current) return;
+
     setMessages(prev => [...prev, {
       id: msg.id || Date.now(),
       sender: msg.sender,
@@ -35,11 +39,16 @@ const ChatRoom = () => {
       type: msg.type || 'user'
     }]);
 
-    // Add new participants to the list
-    if (msg.sender && msg.sender !== 'system' && !participants.has(msg.sender)) {
-      setParticipants(prev => new Set([...prev, msg.sender]));
+    // Use functional update to avoid dependency on participants
+    if (msg.sender && msg.sender !== 'system') {
+      setParticipants(prevParticipants => {
+        if (!prevParticipants.has(msg.sender)) {
+          return new Set([...prevParticipants, msg.sender]);
+        }
+        return prevParticipants;
+      });
     }
-  }, [participants]);
+  }, []); // Empty dependency array is safe now
 
   useEffect(() => {
     const storedUsername = localStorage.getItem('username');
@@ -53,32 +62,51 @@ const ChatRoom = () => {
     setUsername(storedUsername);
     setParticipants(prev => new Set([...prev, storedUsername]));
 
-    // Connect to WebSocket
-    connectToRoom(roomId, storedUsername, handleWebSocketMessage)
-      .then(() => {
-        setIsConnected(true);
+    mountedRef.current = true;
 
-        // Add join notification
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          sender: 'system',
-          content: `${storedUsername} joined the room`,
-          timestamp: new Date(),
-          type: 'system'
-        }]);
-      })
-      .catch(error => {
-        console.error('Connection error:', error);
-        toast({
-          title: "Connection Error",
-          description: error.message || "Failed to connect to chat room",
-          variant: "destructive",
+    // Track connection attempt
+    connectionRef.current = {
+      roomId,
+      username: storedUsername,
+      handler: handleWebSocketMessage
+    };
+
+    const connect = () => {
+      connectToRoom(roomId, storedUsername, handleWebSocketMessage)
+        .then(() => {
+          if (!mountedRef.current) return;
+          setIsConnected(true);
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            sender: 'system',
+            content: `${storedUsername} joined the room`,
+            timestamp: new Date(),
+            type: 'system'
+          }]);
+        })
+        .catch(error => {
+          if (!mountedRef.current) return;
+          console.error('Connection error:', error);
+
+          // Only show error if it's the latest connection attempt
+          if (connectionRef.current?.roomId === roomId) {
+            toast({
+              title: "Connection Error",
+              description: error.message || "Failed to connect to chat room",
+              variant: "destructive",
+            });
+          }
         });
-      });
+    };
+
+    connect();
 
     // Cleanup on unmount
     return () => {
-      if (isWebSocketConnected()) {
+      mountedRef.current = false;
+
+      // Only disconnect if this is the active connection
+      if (isWebSocketConnected() && connectionRef.current?.roomId === roomId) {
         disconnectFromRoom();
       }
     };
@@ -94,18 +122,14 @@ const ChatRoom = () => {
 
   const handleSendMessage = (e) => {
     e.preventDefault();
-
     if (!message.trim() || !isConnected) return;
-
-    // Send via WebSocket
     sendWebSocketMessage(message.trim());
-
-    // Clear input
     setMessage('');
   };
 
   const handleLeaveRoom = () => {
-    // Add system message
+    if (!mountedRef.current) return;
+
     setMessages(prev => [...prev, {
       id: Date.now(),
       sender: 'system',
@@ -122,6 +146,9 @@ const ChatRoom = () => {
       title: "Left Room",
       description: `You have left room ${roomId}`,
     });
+
+    // Prevent reconnection attempts after leaving
+    connectionRef.current = null;
     navigate('/dashboard');
   };
 
@@ -138,11 +165,6 @@ const ChatRoom = () => {
       minute: '2-digit'
     });
   };
-
-  // The rest of your component remains the same...
-  // [Keep all your existing JSX code unchanged]
-
-
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">

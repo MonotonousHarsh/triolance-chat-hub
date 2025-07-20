@@ -3,47 +3,61 @@ import SockJS from 'sockjs-client';
 
 let stompClient = null;
 let currentRoom = null;
+let reconnectCount = 0;
+const MAX_RECONNECT_ATTEMPTS = 3; // Reduced from 5 to 3
+let connectionPromise = null;
+let activeReconnectTimeout = null;
 
-export const connectToRoom = (roomId, username, onMessageReceived) => {
-  return new Promise((resolve, reject) => {
-    // Disconnect existing connection if any
-    if (stompClient && stompClient.connected) {
-      stompClient.deactivate();
-    }
+/**
+ * Connect to a room via SockJS-backed STOMP.
+ */
+export function connectToRoom(roomId, username, onMessageReceived) {
+  // Cancel any pending reconnection attempts
+  if (activeReconnectTimeout) {
+    clearTimeout(activeReconnectTimeout);
+    activeReconnectTimeout = null;
+  }
 
-    // Create SockJS connection
+  // Return existing connection promise if available
+  if (connectionPromise) {
+    return connectionPromise;
+  }
+
+  // Tear down any existing client
+  if (stompClient) {
+    stompClient.deactivate();
+    stompClient = null;
+  }
+
+  connectionPromise = new Promise((resolve, reject) => {
+    const token = localStorage.getItem('authToken');
     const socket = new SockJS('http://localhost:8080/real-time/ws-chat');
 
-    // Create STOMP client
-    stompClient = new Client({
+    const client = new Client({
       webSocketFactory: () => socket,
-      connectHeaders: {
-        Authorization: `Bearer ${localStorage.getItem('authToken')}`
-      },
-      debug: (str) => console.debug('STOMP:', str),
-      reconnectDelay: 5000,
+      connectHeaders: { Authorization: `Bearer ${token}` },
+      debug: (msg) => console.debug('STOMP:', msg),
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
+      reconnectDelay: 0, // Disable built-in reconnection
 
       onConnect: () => {
-        console.log('Connected to WebSocket for room:', roomId);
+        reconnectCount = 0; // Reset on successful connection
+        console.log('▶ STOMP connected to room', roomId);
 
-        // Subscribe to room messages
-        stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
-          const parsedMessage = JSON.parse(message.body);
-          onMessageReceived(parsedMessage);
-        });
+        client.roomSub = client.subscribe(
+          `/topic/room/${roomId}`,
+          (msg) => onMessageReceived(JSON.parse(msg.body))
+        );
 
-        // Subscribe to private history messages
-        stompClient.subscribe(`/user/queue/history/${roomId}`, (message) => {
-          const history = JSON.parse(message.body);
-          history.forEach(msg => onMessageReceived(msg));
-        });
+        client.historySub = client.subscribe(
+          `/user/queue/history/${roomId}`,
+          (msg) => JSON.parse(msg.body).forEach(onMessageReceived)
+        );
 
-        // Send join notification
-        stompClient.publish({
+        client.publish({
           destination: `/app/chat/${roomId}/join`,
-          body: JSON.stringify({ username })
+          body: JSON.stringify({ username }),
         });
 
         currentRoom = roomId;
@@ -51,40 +65,100 @@ export const connectToRoom = (roomId, username, onMessageReceived) => {
       },
 
       onStompError: (frame) => {
-        console.error('STOMP Error:', frame.headers.message);
-        reject(new Error(frame.headers.message));
+        console.error('⤫ STOMP error:', frame.headers.message);
+        if (!client.connected) {
+          handleReconnect(reject, roomId, username, onMessageReceived);
+        }
       },
 
-      onWebSocketClose: () => {
-        console.log('WebSocket connection closed');
+      onWebSocketClose: (evt) => {
+        console.log('✖ SockJS closed', evt);
         currentRoom = null;
+        if (client.roomSub) client.roomSub.unsubscribe();
+        if (client.historySub) client.historySub.unsubscribe();
+        handleReconnect(reject, roomId, username, onMessageReceived);
       }
     });
 
-    stompClient.activate();
-  });
-};
+    // Transport-level errors
+    client.onWebSocketError = (evt) => {
+      console.error('✖ Transport error:', evt);
+      handleReconnect(reject, roomId, username, onMessageReceived);
+    };
 
-export const sendMessage = (content) => {
-  if (stompClient && stompClient.connected && currentRoom) {
+    stompClient = client;
+    client.activate();
+  });
+
+  return connectionPromise;
+}
+
+/** Handle reconnection with exponential backoff */
+function handleReconnect(reject, roomId, username, onMessageReceived) {
+  if (reconnectCount >= MAX_RECONNECT_ATTEMPTS) {
+    console.error('Max reconnect attempts reached');
+    connectionPromise = null;
+    reject(new Error('Connection failed after multiple attempts'));
+    return;
+  }
+
+  const delay = Math.pow(2, reconnectCount) * 1000;
+  reconnectCount++;
+
+  console.log(`Reconnecting in ${delay}ms (attempt ${reconnectCount})`);
+
+  // Clear any existing timeout
+  if (activeReconnectTimeout) {
+    clearTimeout(activeReconnectTimeout);
+  }
+
+  activeReconnectTimeout = setTimeout(() => {
+    // Reset connection promise to allow new attempts
+    connectionPromise = null;
+
+    // Clean up before reconnecting
+    if (stompClient) {
+      stompClient.deactivate();
+      stompClient = null;
+    }
+
+    connectToRoom(roomId, username, onMessageReceived)
+      .catch(() => {}); // Avoid unhandled rejection
+  }, delay);
+}
+
+/** Send a chat message */
+export function sendMessage(content) {
+  if (stompClient?.connected && currentRoom) {
     stompClient.publish({
       destination: `/app/chat/${currentRoom}/send`,
-      body: JSON.stringify({ content })
+      body: JSON.stringify({ content }),
     });
-  } else {
-    console.error('Cannot send message: not connected to a room');
   }
-};
+}
 
-export const disconnectFromRoom = () => {
-  if (stompClient) {
-    stompClient.deactivate();
-    stompClient = null;
-    currentRoom = null;
-    console.log('Disconnected from WebSocket');
+/** Cleanly disconnect */
+export function disconnectFromRoom() {
+  if (!stompClient) return;
+
+  // Prevent reconnection
+  if (activeReconnectTimeout) {
+    clearTimeout(activeReconnectTimeout);
+    activeReconnectTimeout = null;
   }
-};
 
-export const isConnected = () => {
-  return stompClient && stompClient.connected;
-};
+  reconnectCount = MAX_RECONNECT_ATTEMPTS; // Block future reconnections
+  connectionPromise = null;
+
+  if (stompClient.roomSub) stompClient.roomSub.unsubscribe();
+  if (stompClient.historySub) stompClient.historySub.unsubscribe();
+  stompClient.deactivate();
+  stompClient = null;
+  currentRoom = null;
+  console.log('✅ Disconnected');
+}
+
+/** Check live connection */
+export function isConnected() {
+  return Boolean(stompClient?.connected);
+}
